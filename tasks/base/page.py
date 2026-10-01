@@ -159,6 +159,10 @@ page_forgotten_hall.link(CLOSE, destination=page_main)
 page_rogue = Page(ROGUE_CHECK)
 page_rogue.link(CLOSE, destination=page_main)
 
+# Currency Wars lobby, entered from page_guide
+page_currency_wars = Page(CURRENCY_WARS_CHECK)
+page_currency_wars.link(CLOSE, destination=page_main)
+
 # Planner result
 page_planner = Page(PLANNER_CHECK)
 page_planner.link(CLOSE, destination=page_menu)

@@ -2504,6 +2504,43 @@
       }
     }
   },
+  "CurrencyWars": {
+    "Scheduler": {
+      "Enable": {
+        "type": "checkbox",
+        "value": false,
+        "option": [
+          true,
+          false
+        ]
+      },
+      "NextRun": {
+        "type": "datetime",
+        "value": "2020-01-01 00:00:00",
+        "validate": "datetime"
+      },
+      "Command": {
+        "type": "input",
+        "value": "CurrencyWars",
+        "display": "hide"
+      },
+      "ServerUpdate": {
+        "type": "input",
+        "value": "04:00",
+        "display": "hide"
+      }
+    },
+    "CurrencyWars": {
+      "MaxRunsPerTask": {
+        "type": "input",
+        "value": 3
+      },
+      "TargetPromotionLevel": {
+        "type": "input",
+        "value": 0
+      }
+    }
+  },
   "Daemon": {
     "Daemon": {
       "Enable": {

@@ -414,6 +414,10 @@ RogueStorage:
     color: "#8fb5fe"
     display: display
 
+CurrencyWars:
+  MaxRunsPerTask: 3
+  TargetPromotionLevel: 0
+
 Ornament:
   Dungeon:
     value: Divergent_Universe_Eternal_Comedy

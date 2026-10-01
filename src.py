@@ -64,6 +64,10 @@ class StarRailCopilot(AzurLaneAutoScript):
         from tasks.rogue.rogue import Rogue
         Rogue(config=self.config, device=self.device).run()
 
+    def currency_wars(self):
+        from tasks.currency_wars.currency_wars import CurrencyWars
+        CurrencyWars(config=self.config, device=self.device).run()
+
     def ornament(self):
         from tasks.ornament.ornament import Ornament
         Ornament(config=self.config, device=self.device).run()

@@ -14,6 +14,7 @@ Star Rail auto script | 星铁速溶茶，崩坏：星穹铁道脚本，基于�
 - **打本**：[角色养成规划](https://github.com/LmeSzinc/StarRailCopilot/wiki/Planner_cn)，每日副本，双倍活动副本，历战余响。
 - **收获**：完成每日任务，收派委托，收取无名勋礼奖励。
 - **模拟宇宙**：刷模拟宇宙，使用开拓力刷内圈遗器。
+- **货币战争**：（仅国服）以最低难度刷「超频博弈」，每周积分与额外晋升点刷满后可继续刷晋升点。
 - **后台托管**：自动启动模拟器和游戏，后台托管清体力和每日，通过仪表盘了解资源情况。
 - **云游戏**：（仅国服）[在云崩坏星穹铁道上运行SRC](https://github.com/LmeSzinc/StarRailCopilot/wiki/Cloud_cn)
 

@@ -62,6 +62,10 @@
       "name": "模拟宇宙",
       "help": ""
     },
+    "CurrencyWars": {
+      "name": "货币战争",
+      "help": "自动游玩「超频博弈」，敌人难度保持最低"
+    },
     "Daemon": {
       "name": "剧情连点器",
       "help": ""
@@ -1725,6 +1729,20 @@
     "SimulatedUniverse": {
       "name": "模拟宇宙",
       "help": ""
+    }
+  },
+  "CurrencyWars": {
+    "_info": {
+      "name": "货币战争设置",
+      "help": "每周积分和额外晋升点上限会优先刷满，之后按下列条件继续刷晋升点"
+    },
+    "MaxRunsPerTask": {
+      "name": "每次运行最多局数",
+      "help": "本次运行最多打几局，每周上限未满时不受此限制"
+    },
+    "TargetPromotionLevel": {
+      "name": "目标晋升等级",
+      "help": "晋升等级达到此值后停止，0 为不限制"
     }
   },
   "Ornament": {

@@ -63,6 +63,17 @@ CLOSE = ButtonWrapper(
         button=(1222, 25, 1252, 55),
     ),
 )
+CURRENCY_WARS_CHECK = ButtonWrapper(
+    name='CURRENCY_WARS_CHECK',
+    cn=Button(
+        file='./assets/cn/base/page/CURRENCY_WARS_CHECK.png',
+        area=(901, 633, 1101, 664),
+        search=(881, 613, 1121, 684),
+        color=(172, 174, 189),
+        button=(901, 633, 1101, 664),
+    ),
+    en=None,
+)
 EVENT_CHECK = ButtonWrapper(
     name='EVENT_CHECK',
     share=Button(

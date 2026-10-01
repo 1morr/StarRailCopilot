@@ -62,6 +62,10 @@
       "name": "Simulated Universe",
       "help": ""
     },
+    "CurrencyWars": {
+      "name": "Currency Wars",
+      "help": "Play Overclock mode automatically, enemy difficulty stays at the lowest"
+    },
     "Daemon": {
       "name": "Dialogue Clicker",
       "help": ""
@@ -1725,6 +1729,20 @@
     "SimulatedUniverse": {
       "name": "Sim.Univ.",
       "help": ""
+    }
+  },
+  "CurrencyWars": {
+    "_info": {
+      "name": "Currency Wars Settings",
+      "help": "Weekly score and extra promotion points are filled first, then keep farming promotion points by the conditions below"
+    },
+    "MaxRunsPerTask": {
+      "name": "Max Runs Per Task",
+      "help": "Play at most this many runs in one task execution, ignored while weekly caps are not full"
+    },
+    "TargetPromotionLevel": {
+      "name": "Target Promotion Level",
+      "help": "Stop when promotion level reaches this value, 0 for no limit"
     }
   },
   "Ornament": {

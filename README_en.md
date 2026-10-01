@@ -13,6 +13,7 @@ Star Rail Instant Tea, a bot for Honkai: Star Rail, based on the next generation
 - **Dungeons**: [Character Planner](https://github.com/LmeSzinc/StarRailCopilot/wiki/Planner_en), Dungeons, dungeons at double event, echo of war.
 - **Rewards**: Complete daily quests, do assignment, claim nameless horner rewards.
 - **Simulated Universe**: Farm SU, farm planers using trailbalze power.
+- **Currency Wars**: (CN only) Farm Overclock mode at lowest difficulty, fill weekly score and extra promotion points, then optionally keep farming promotion points.
 - **AFK Auto Farming**: Automatically launch emulators and games, do dungeons and quests at background, keep track of resources through dashboard.
 - **Cloud Gaming**: [CN only] [Run SRC on cloud HSR](https://github.com/LmeSzinc/StarRailCopilot/wiki/Cloud_cn)
 
