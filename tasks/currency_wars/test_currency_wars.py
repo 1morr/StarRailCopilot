@@ -19,6 +19,7 @@ server.set_lang('cn')
 from tasks.base.assets.assets_base_page import CURRENCY_WARS_CHECK
 from tasks.currency_wars.assets.assets_currency_wars_entry import *
 from tasks.currency_wars.assets.assets_currency_wars_run import *
+from tasks.currency_wars.choice import CurrencyWarsChoice
 from tasks.currency_wars.currency_wars import CurrencyWars
 from tasks.currency_wars.entry import CurrencyWarsStatus
 from tasks.currency_wars.invest import CurrencyWarsInvest, ENV_CARDS_X, STRATEGY_CARDS_X
@@ -46,19 +47,11 @@ def bare(cls, name):
     (SUPPLY_CHECK, 'cw_36', 'cw_30'),
     (INVEST_ENV_CHECK, 'cw_11', 'cw_28'),
     (INVEST_STRATEGY_CHECK, 'cw_28', 'cw_11'),
-    (SELECT_CONFIRM, 'cw_wish', 'cw_30'),
-    (SELECT_CONFIRM, 'cw_hack', 'cw_30'),
     # Unfinished run after disconnection, it replaces the enter button
     (CONTINUE_PROGRESS, 'cw_continue', 'cw_05'),
     (ENTER_OVERCLOCK, 'cw_05', 'cw_continue'),
     (MAX_LEVEL, 'cw_84', 'cw_30'),
-    # Equipment box opened from bench
-    (BOX_CHECK, 'cw_box', 'cw_30'),
-    (BOX_CHECK, 'cw_box2', 'cw_benchfull'),
-    # 5-cost hiring book, panel title is shorter so "请选择1个" moves left
-    (BOX_CHECK, 'cw_hire', 'cw_30'),
     (NO_FRONT_CHECK, 'cw_nofront', 'cw_deploy0'),
-    (EXPERT_CHECK, 'cw_expert', 'cw_box'),
     # Character detail with a sell button, opened by clicking a bench character
     (CHARACTER_DETAIL, 'cw_detail', 'cw_30'),
 ])
@@ -135,53 +128,66 @@ def test_supply_card(name, x_range):
     assert x_range[0] <= (x1 + x2) // 2 <= x_range[1]
 
 
-@pytest.mark.parametrize('name, expected', [
-    ('cw_wish', True),
-    ('cw_hack', True),
-    ('cw_star', True),
+# Every choice panel seen so far. A new panel usually needs only a screenshot here, not new code.
+# (name, first option card area x1, y1, x2, y2)
+CHOICE_PANELS = [
+    ('cw_wish', (230, 140, 590, 410)),
+    ('cw_hack', (310, 120, 690, 330)),
+    # Dimmed by network lag
+    ('cw_star', (522, 122, 704, 290)),
+    ('cw_box', (285, 97, 500, 243)),
+    ('cw_box2', (285, 97, 500, 243)),
+    ('cw_hire', (258, 97, 458, 320)),
+    # The first card is locked until 1-6 but still selectable
+    ('cw_expert', (147, 97, 347, 320)),
+]
+
+
+@pytest.mark.parametrize('name, expected', [(name, True) for name, _ in CHOICE_PANELS] + [
     ('cw_30', False),
     ('cw_36', False),
-    ('cw_28', False),
+    ('cw_11', False),
+    ('cw_benchfull', False),
+    ('cw_detail', False),
 ])
-def test_is_select_panel(name, expected):
-    from tasks.currency_wars.run import CurrencyWarsRun
-    assert bare(CurrencyWarsRun, name).is_select_panel() is expected
+def test_is_choice_panel(name, expected):
+    assert bare(CurrencyWarsChoice, name).is_choice_panel() is expected
 
 
-@pytest.mark.parametrize('name', ['cw_wish', 'cw_hack', 'cw_star'])
-def test_select_panel_over_board(name):
-    # run_once only looks for select panels when PREP_CHECK appears, to skip OCR during battle
+@pytest.mark.parametrize('name', [name for name, _ in CHOICE_PANELS])
+def test_choice_panel_over_board(name):
+    # run_once only looks for choice panels when PREP_CHECK appears, to skip OCR during battle
     assert PREP_CHECK.match_template(image(name))
 
 
-@pytest.mark.parametrize('name, card', [
-    # Option card areas (x1, y1, x2, y2), the click must land inside one of them
-    ('cw_wish', (230, 140, 590, 410)),
-    ('cw_hack', (310, 120, 690, 330)),
-    ('cw_star', (720, 122, 902, 290)),
-    # Equipment box, 4 options
-    ('cw_box', (285, 97, 500, 243)),
-    # Hiring book has no "详情", fallback must still land on the first character
-    ('cw_hire', (258, 97, 458, 320)),
-])
-def test_select_panel_option(name, card):
-    from tasks.currency_wars.run import CurrencyWarsRun
-    x1, y1, x2, y2 = bare(CurrencyWarsRun, name).select_panel_option().button
+@pytest.mark.parametrize('name, card', CHOICE_PANELS)
+def test_choice_option(name, card):
+    self = bare(CurrencyWarsChoice, name)
+    x1, y1, x2, y2 = self._choice_option(self._choice_ocr()).button
     x, y = (x1 + x2) // 2, (y1 + y2) // 2
     assert card[0] <= x <= card[2] and card[1] <= y <= card[3]
 
 
 @pytest.mark.parametrize('name, confirm_y', [
-    # Confirm button center y, from OCR of "确认选择"
+    # Confirm button center y, "确认选择" under the red hint on the right
     ('cw_wish', 517),
     ('cw_hack', 482),
+    # Confirm text unreadable before selecting, located from the hint
     ('cw_star', 453),
+    # Closed once selected, no confirm
+    ('cw_box', None),
+    ('cw_hire', None),
+    ('cw_expert', None),
 ])
-def test_select_panel_confirm(name, confirm_y):
-    from tasks.currency_wars.run import CurrencyWarsRun
-    x1, y1, x2, y2 = bare(CurrencyWarsRun, name).select_panel_confirm().button
-    assert 1000 <= (x1 + x2) // 2 <= 1180
-    assert abs((y1 + y2) // 2 - confirm_y) <= 10
+def test_choice_confirm(name, confirm_y):
+    self = bare(CurrencyWarsChoice, name)
+    confirm = self._choice_confirm(self._choice_ocr())
+    if confirm_y is None:
+        assert confirm is None
+    else:
+        x1, y1, x2, y2 = confirm.button
+        assert 1000 <= (x1 + x2) // 2 <= 1180
+        assert abs((y1 + y2) // 2 - confirm_y) <= 10
 
 
 def test_empty_slots():
@@ -286,6 +292,9 @@ class FakeDevice:
     def stuck_record_add(self, button):
         pass
 
+    def image_save(self):
+        pass
+
 
 def test_buy_exp_with_plenty_of_gold(monkeypatch):
     # 70 gold buys exp 12+ times, every click takes effect so it must not be treated as stuck
@@ -336,3 +345,25 @@ def test_open_boxes_clicks_each_slot_once():
     self.device = FakeDevice('cw_benchfull')
     self.prep_open_boxes()
     assert self.device.clicks == ['BOX_2', 'BOX_5', 'BOX_7']
+
+
+def test_choice_panel_ignores_board_purchase():
+    # "购买经验" on the board under the panel is not a cost of the panel
+    self = bare(CurrencyWarsChoice, 'cw_expert')
+    self.device = FakeDevice('cw_expert')
+    assert self.handle_choice_panel()
+    assert self.device.clicks == ['CHOICE_OPTION']
+
+
+def test_choice_panel_stops_on_cost(monkeypatch):
+    from module.exception import RequestHumanTakeover
+    self = bare(CurrencyWarsChoice, 'cw_box')
+    self.device = FakeDevice('cw_box')
+    results = self._choice_ocr()
+    # Mutation: an option that costs stellar jade
+    option = next(result for result in results if '请选择' not in result.ocr_text)
+    option.ocr_text, option.box = '消耗星琼', (300, 200, 400, 230)
+    monkeypatch.setattr(self, '_choice_ocr', lambda: results)
+    with pytest.raises(RequestHumanTakeover):
+        self.handle_choice_panel()
+    assert self.device.clicks == []

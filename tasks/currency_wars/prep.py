@@ -4,8 +4,8 @@ import numpy as np
 
 from module.base.button import ClickButton
 from module.logger import logger
-from module.ocr.ocr import Digit, DigitCounter, Ocr
-from tasks.base.ui import UI
+from module.ocr.ocr import Digit, DigitCounter
+from tasks.currency_wars.choice import CurrencyWarsChoice
 from tasks.currency_wars.assets.assets_currency_wars_run import *
 
 # Board geometry at 1280x720, slots don't move between runs
@@ -28,10 +28,6 @@ SELL_AREA = (1190, 610)
 # Bench has 9 slots, keep some room for orb rewards
 BENCH_SELL_THRESHOLD = 8
 BENCH_SELL_COUNT = 3
-# Option cards in select panels and equipment boxes have a "详情" button under them, click above it.
-# Wish trial has no "详情", click its left option.
-SELECT_WISH_OPTION = ClickButton((390, 280, 430, 320), name='SELECT_OPTION')
-SELECT_DETAIL_TO_OPTION = 100
 # Shop has 5 character cards, opened by clicking PREP_CHECK ("商店") and closed by SHOP_OPEN ("收起")
 SHOP_CARDS_LEFT = [147 + 224 * i for i in range(5)]
 
@@ -60,7 +56,7 @@ class ShopCard:
         return ClickButton((x - 30, 100, x + 30, 160), name=f'SHOP_CARD_{self.index}')
 
 
-class CurrencyWarsPrep(UI):
+class CurrencyWarsPrep(CurrencyWarsChoice):
     def _slot_occupied(self, x, y) -> bool:
         patch = self.device.image[y - 30:y + 30, x - 25:x + 25]
         return patch.std() > SLOT_OCCUPIED_STD
@@ -292,19 +288,6 @@ class CurrencyWarsPrep(UI):
         # Rewards fly to bench and investment strategy panel pops up after ~2s
         self.device.sleep(2.5)
 
-    def select_panel_option(self) -> ClickButton:
-        """
-        Returns:
-            The leftmost option of a select panel or an equipment box
-        """
-        details = [result for result in Ocr(OCR_SELECT_PANEL).detect_and_ocr(self.device.image)
-                   if '详情' in result.ocr_text]
-        if not details:
-            return SELECT_WISH_OPTION
-        x1, y1, x2, _ = min((result.box for result in details), key=lambda box: box[0])
-        x, y = (x1 + x2) // 2, y1 - SELECT_DETAIL_TO_OPTION
-        return ClickButton((x - 20, y - 20, x + 20, y + 20), name='SELECT_OPTION')
-
     def prep_open_boxes(self):
         """
         Equipment boxes and hiring books take bench slots, a full bench blocks FIGHT.
@@ -320,13 +303,13 @@ class CurrencyWarsPrep(UI):
         opened = set()
         for _ in range(10):
             self.device.screenshot()
-            if self.appear(BOX_CHECK):
-                self.device.click(self.select_panel_option())
-                self.device.sleep(1)
-                continue
             if self.handle_character_detail():
                 continue
             if not self.is_prep_ready():
+                # Box opened, pick an option
+                if self.handle_choice_panel():
+                    self.device.sleep(1)
+                    continue
                 break
             boxes = [index for index in self._bench_boxes() if index not in opened]
             if not boxes:
@@ -380,12 +363,10 @@ class CurrencyWarsPrep(UI):
         """
         if not self.appear(PREP_CHECK):
             return False
-        for panel in [INVEST_STRATEGY_CHECK, SELECT_CONFIRM, UNDERFILLED_CHECK, BOX_CHECK, EXPERT_CHECK, CHARACTER_DETAIL]:
+        for panel in [INVEST_STRATEGY_CHECK, UNDERFILLED_CHECK, CHARACTER_DETAIL]:
             if self.appear(panel):
                 return False
-        # Select panels may be dimmed, check them with OCR
-        results = Ocr(OCR_SELECT_CONFIRM).detect_and_ocr(self.device.image)
-        return not any(result.ocr_text.startswith('请选择') for result in results)
+        return not self.is_choice_panel()
 
     def prep_once(self) -> bool:
         """

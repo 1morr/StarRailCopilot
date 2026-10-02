@@ -35,26 +35,6 @@ BOSS_PREVIEW_NEXT = ButtonWrapper(
     ),
     en=None,
 )
-BOX_CHECK = ButtonWrapper(
-    name='BOX_CHECK',
-    cn=[
-        Button(
-            file='./assets/cn/currency_wars/run/BOX_CHECK.png',
-            area=(713, 55, 799, 76),
-            search=(693, 35, 819, 96),
-            color=(61, 61, 63),
-            button=(713, 55, 799, 76),
-        ),
-        Button(
-            file='./assets/cn/currency_wars/run/BOX_CHECK.2.png',
-            area=(651, 55, 737, 76),
-            search=(631, 35, 757, 96),
-            color=(60, 60, 63),
-            button=(651, 55, 737, 76),
-        ),
-    ],
-    en=None,
-)
 BUY_EXP = ButtonWrapper(
     name='BUY_EXP',
     cn=Button(
@@ -95,17 +75,6 @@ CLICK_BLANK = ButtonWrapper(
             button=(566, 556, 715, 587),
         ),
     ],
-    en=None,
-)
-EXPERT_CHECK = ButtonWrapper(
-    name='EXPERT_CHECK',
-    cn=Button(
-        file='./assets/cn/currency_wars/run/EXPERT_CHECK.png',
-        area=(644, 22, 746, 45),
-        search=(624, 2, 766, 65),
-        color=(94, 94, 94),
-        button=(644, 22, 746, 45),
-    ),
     en=None,
 )
 INVEST_ENV_CHECK = ButtonWrapper(
@@ -193,26 +162,6 @@ OCR_GOLD = ButtonWrapper(
         button=(1203, 588, 1240, 622),
     ),
 )
-OCR_SELECT_CONFIRM = ButtonWrapper(
-    name='OCR_SELECT_CONFIRM',
-    share=Button(
-        file='./assets/share/currency_wars/run/OCR_SELECT_CONFIRM.png',
-        area=(930, 380, 1250, 540),
-        search=(910, 360, 1270, 560),
-        color=(127, 106, 125),
-        button=(930, 380, 1250, 540),
-    ),
-)
-OCR_SELECT_PANEL = ButtonWrapper(
-    name='OCR_SELECT_PANEL',
-    share=Button(
-        file='./assets/share/currency_wars/run/OCR_SELECT_PANEL.png',
-        area=(180, 100, 1240, 400),
-        search=(160, 80, 1260, 420),
-        color=(28, 28, 53),
-        button=(180, 100, 1240, 400),
-    ),
-)
 OCR_SUPPLY_NAME = ButtonWrapper(
     name='OCR_SUPPLY_NAME',
     share=Button(
@@ -254,26 +203,6 @@ RESULT_SETTLE = ButtonWrapper(
         color=(202, 198, 184),
         button=(599, 643, 684, 671),
     ),
-    en=None,
-)
-SELECT_CONFIRM = ButtonWrapper(
-    name='SELECT_CONFIRM',
-    cn=[
-        Button(
-            file='./assets/cn/currency_wars/run/SELECT_CONFIRM.png',
-            area=(1045, 503, 1132, 531),
-            search=(1025, 483, 1152, 551),
-            color=(194, 194, 194),
-            button=(1045, 503, 1132, 531),
-        ),
-        Button(
-            file='./assets/cn/currency_wars/run/SELECT_CONFIRM.2.png',
-            area=(1040, 469, 1127, 496),
-            search=(1020, 449, 1147, 516),
-            color=(192, 192, 192),
-            button=(1040, 469, 1127, 496),
-        ),
-    ],
     en=None,
 )
 SETTLE_NEXT_PAGE = ButtonWrapper(
