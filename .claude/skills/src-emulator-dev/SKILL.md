@@ -106,6 +106,8 @@ EOF
 - 要測排程器的錯誤處理（例外分類、重啟、存錯誤截圖），就走 `StarRailCopilot('dev').run('<任務方法名>')`，不要直接呼叫任務的 `run()`。遇到 ScriptError 或未知例外時它會 `exit(1)`。
 - `dev.json` 有其他到期的任務時，任務在第一次 `task_switched()` 檢查就會交出控制權。驗收多局流程時，在腳本裡設 `src.config.task_switched = lambda: False`。
 - Monitor 最長 30 分鐘就會過期，過期後用 `tail -n 0 -F` 重新訂閱，避免重複收到舊事件。
+- 要檢查決策品質（買誰、換誰、賣誰），不要只看 log。在 soak 腳本裡 monkeypatch 各步驟，前後各 `save_image` 一張，然後把截圖餵回辨識函式（用 `__new__` 建實例），對照 log 逐張重現。只看 log 時，「面板蓋住盤面時照樣賣人」「商店自己打開時照樣划晶礦」這類問題看起來都像正常動作。
+- 用肉眼看截圖判斷卡片品質會被角色服裝顏色誤導（例如灰卡黑塔看起來是紫色），以卡片底部色條的 RGB 為準。
 - 正常操作也可能需要連點同一個按鈕 12 次以上（例如金幣很多時連買經驗）。每次確認動作有生效（數值有變）就 `click_record_clear()`，只有沒生效時才算卡住。
 - 長時間等待（自動戰鬥、動畫）時，`device.stuck_record_check()` 會丟 `GameStuckError`；同一個按鈕在最近 15 次點擊中出現 12 次會丟 `GameTooManyClickError`。等待迴圈裡要呼叫 `self.device.stuck_record_clear()`，重複點擊要用 `click_record_clear()` 或 interval 控制。
 
