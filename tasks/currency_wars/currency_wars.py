@@ -1,5 +1,5 @@
 from module.logger import logger
-from tasks.base.page import page_main
+from tasks.base.page import page_currency_wars, page_main
 from tasks.currency_wars.assets.assets_currency_wars_entry import CONTINUE_PROGRESS
 from tasks.currency_wars.entry import CurrencyWarsEntry, CurrencyWarsStatus
 
@@ -33,15 +33,18 @@ class CurrencyWars(CurrencyWarsEntry):
             in: Any
             out: page_currency_wars
         """
-        self.device.screenshot()
-        if self.is_in_run():
-            logger.info('Run ongoing, continue it')
-            self.run_once()
-            return True
-        if self.is_mode_select():
-            logger.info('At mode select, back to lobby')
-            self.mode_to_lobby()
-            return False
+        # Battle animations darken the screen for a few seconds, wait before treating it as outside a run
+        for _ in self.loop(skip_first=False, timeout=10):
+            if self.is_in_run():
+                logger.info('Run ongoing, continue it')
+                self.run_once()
+                return True
+            if self.is_mode_select():
+                logger.info('At mode select, back to lobby')
+                self.mode_to_lobby()
+                return False
+            if self.ui_page_appear(page_currency_wars) or self.ui_page_appear(page_main):
+                break
         self.lobby_enter()
         return False
 

@@ -23,6 +23,7 @@ from tasks.currency_wars.choice import CurrencyWarsChoice
 from tasks.currency_wars.currency_wars import CurrencyWars
 from tasks.currency_wars.entry import CurrencyWarsStatus
 from tasks.currency_wars.invest import CurrencyWarsInvest, ENV_CARDS_X, STRATEGY_CARDS_X
+from tasks.currency_wars.board import BENCH_X, FRONT_X
 from tasks.currency_wars.prep import CurrencyWarsPrep
 
 DATA = os.path.join(os.path.dirname(__file__), 'test_data')
@@ -140,6 +141,8 @@ CHOICE_PANELS = [
     ('cw_hire', (258, 97, 458, 320)),
     # The first card is locked until 1-6 but still selectable
     ('cw_expert', (147, 97, 347, 320)),
+    # Black Swan's fortune teller, options cost in-run gold
+    ('cw_fortune', (210, 125, 532, 327)),
 ]
 
 
@@ -177,6 +180,7 @@ def test_choice_option(name, card):
     # Closed once selected, no confirm
     ('cw_box', None),
     ('cw_hire', None),
+    ('cw_fortune', 482),
     ('cw_expert', None),
 ])
 def test_choice_confirm(name, confirm_y):
@@ -193,11 +197,11 @@ def test_choice_confirm(name, confirm_y):
 def test_empty_slots():
     # cw_33: front slot 1 empty, back row slot 1,2 occupied
     self = bare(CurrencyWarsPrep, 'cw_33')
-    assert self._empty_slots('front', deploy_total=5) == [(488, 258)]
-    assert [x for x, _ in self._empty_slots('back', deploy_total=5)] == [389, 690, 790, 890]
-    # cw_82: deploy limit 10 switches back row to 7 slots, only the last one is empty
+    assert self._empty_slots('front') == [(488, 258)]
+    assert [x for x, _ in self._empty_slots('back')] == [389, 690, 790, 890]
+    # cw_82: back row in 7 slots, only the last one is empty
     self = bare(CurrencyWarsPrep, 'cw_82')
-    assert self._empty_slots('back', deploy_total=10) == [(940, 448)]
+    assert self._empty_slots('back') == [(940, 448)]
 
 
 @pytest.mark.parametrize('ocr_class, button, name, expected', [
@@ -240,6 +244,7 @@ def status(score=18000, extra=3000, level=100):
                               promotion_level=level)
 
 
+
 def task(max_runs=3, target_level=0):
     self = CurrencyWars.__new__(CurrencyWars)
     self.config = SimpleNamespace(CurrencyWars_MaxRunsPerTask=max_runs,
@@ -273,6 +278,7 @@ class FakeDevice:
         self.image = image(name)
         self.click_record = collections.deque(maxlen=30)
         self.clicks = []
+        self.drags = []
 
     def click(self, button):
         from module.device.device import Device
@@ -282,6 +288,13 @@ class FakeDevice:
 
     def click_record_clear(self):
         self.click_record.clear()
+
+    def drag(self, p1, p2, point_random=None, name=None):
+        self.drags.append((p1, p2))
+        self.click(SimpleNamespace(name=name))
+
+    def swipe(self, p1, p2, **kwargs):
+        self.drags.append((p1, p2))
 
     def screenshot(self):
         return self.image
@@ -324,6 +337,9 @@ def test_buy_exp_stops_when_gold_unchanged(monkeypatch):
                  (4, 2, True, False)]),
     # Bought card leaves an empty slot
     ('cw_shop_bought', [(1, 2, True, True), (2, 2, True, False), (3, 3, True, False), (4, 2, True, False)]),
+    # All grey at low level, OCR read the narrow "1" as "一"
+    ('cw_shop_grey', [(0, 1, True, False), (1, 1, True, True), (2, 1, False, True), (3, 1, True, True),
+                      (4, 1, True, False)]),
 ])
 def test_shop_cards(name, expected):
     cards = bare(CurrencyWarsPrep, name)._shop_cards()
@@ -335,7 +351,7 @@ def test_empty_board_needs_characters():
     self = bare(CurrencyWarsPrep, 'cw_empty_board')
     assert self._deploy_counter() == (0, 9, 9)
     assert self._bench_characters() == []
-    assert len(self._empty_slots('front', 9)) == 4
+    assert len(self._empty_slots('front')) == 4
 
 
 def test_open_boxes_clicks_each_slot_once():
@@ -367,3 +383,336 @@ def test_choice_panel_stops_on_cost(monkeypatch):
     with pytest.raises(RequestHumanTakeover):
         self.handle_choice_panel()
     assert self.device.clicks == []
+
+
+@pytest.mark.parametrize('name, slots', [
+    ('cw_30', 6),
+    ('cw_dup_bench', 6),
+    # Deploy limit 10 in both, the layout is not decided by the limit
+    ('cw_benchfull', 6),
+    ('cw_82', 7),
+    ('cw_84', 7),
+    # Empty board, limit 9
+    ('cw_empty_board', 7),
+])
+def test_back_layout(name, slots):
+    assert len(bare(CurrencyWarsPrep, name)._back_x()) == slots
+
+
+@pytest.mark.parametrize('name, bench, board', [
+    # Tiers 1 grey, 2 green, 3 blue, 4 purple, 5 gold, by bench index and board slot x
+    ('cw_benchfull', {0: 3, 1: 2, 3: 3, 4: 4, 6: 4, 8: 4},
+     {488: 1, 590: 2, 690: 2, 792: 3, 389: 1, 489: 3, 590.5: 4, 690.5: 4}),
+    ('cw_82', {0: 1, 1: 5, 2: 5, 3: 1, 4: 4, 5: 4, 6: 1, 7: 1}, {488: 4, 590: 3, 690: 1, 792: 1, 740: 4}),
+])
+def test_card_tier(name, bench, board):
+    self = bare(CurrencyWarsPrep, name)
+    assert {c.index: c.tier for c in self._bench_characters()} == bench
+    # Back row x may equal a front row x, keys of back slots in the same x get +0.5
+    tiers = {}
+    for card in self._board_cards():
+        tiers[card.x + (0.5 if card.row == 'back' and card.x in FRONT_X else 0)] = card.tier
+    for x, tier in board.items():
+        assert tiers[x] == tier
+
+
+@pytest.mark.parametrize('name, deployable', [
+    # Bench 2 and 3 are the same character
+    ('cw_dup_bench', [0, 1, 2]),
+    # Bench 3 is the same as the one in front slot 1
+    ('cw_dup_board', [0, 1]),
+    # Swapped: front slot 1 now has bench 0 before swapping, bench 0 and 3 are the same
+    ('cw_swap', [0, 1]),
+])
+def test_deployable(name, deployable):
+    self = bare(CurrencyWarsPrep, name)
+    cards = self._deployable(self._bench_characters(), self._board_cards())
+    assert [c.index for c in cards] == deployable
+
+
+def card(row, x, tier, front=None, back=None):
+    from tasks.currency_wars.board import Card
+    front = row == 'front' if front is None else front
+    back = row == 'back' if back is None else back
+    return Card(row, x, tier, front=front, back=back)
+
+
+def test_deploy_target_empty_slot_first():
+    bench = [card('bench', 205, 1, True, True), card('bench', 309, 3, True, False)]
+    empty = {'front': [(590, 258)], 'back': [(389, 448)]}
+    target = CurrencyWarsPrep._deploy_target(bench, [], empty, current=0, total=3)
+    assert (target[0].x, target[1]) == (309, (590, 258))
+
+
+def test_deploy_target_replaces_lowest():
+    # Board full, the purple one replaces the grey one in its row, not the green one
+    bench = [card('bench', 205, 4, True, False)]
+    board = [card('front', 488, 2), card('front', 590, 1), card('back', 389, 1)]
+    target = CurrencyWarsPrep._deploy_target(bench, board, {'front': [], 'back': []}, current=3, total=3)
+    assert target[1] == (590, 258)
+
+
+def test_deploy_target_no_downgrade():
+    bench = [card('bench', 205, 2, True, True)]
+    board = [card('front', 488, 2), card('back', 389, 3)]
+    assert CurrencyWarsPrep._deploy_target(bench, board, {'front': [], 'back': []}, current=2, total=2) is None
+
+
+@pytest.mark.parametrize('name, expected', [
+    # (row, x): stars, other occupied cards are 1-star
+    ('cw_82', {('back', 440): 2, ('back', 540): 2}),
+    ('cw_hire', {('back', 840): 2}),
+    ('cw_benchfull', {}),
+    ('cw_detail', {}),
+    ('cw_30', {}),
+])
+def test_card_stars(name, expected):
+    self = bare(CurrencyWarsPrep, name)
+    for c in self._bench_characters() + self._board_cards():
+        assert c.stars == expected.get((c.row, c.x), 1), (c.row, c.x)
+
+
+@pytest.mark.parametrize('name, rows', [
+    # Big orb and a small orb, the small one was missed by fixed sweeps at y 240 and 290
+    ('cw_orbs', [(225, 245), (275, 292)]),
+    ('cw_dup_bench', [(265, 285)]),
+    ('cw_deploy0', []),
+])
+def test_orb_rows(name, rows):
+    found = bare(CurrencyWarsPrep, name)._orb_rows()
+    assert len(found) == len(rows)
+    for y, (y1, y2) in zip(found, rows):
+        assert y1 <= y <= y2
+
+
+def test_shop_copies():
+    # cw_shop_copy: shop card 0 is the character on bench slot 0
+    self = bare(CurrencyWarsPrep, 'cw_shop_copy')
+    owned = self._bench_characters()
+    assert [self._copies(card, owned) for card in self._shop_cards()] == [1, 0, 0, 0, 0]
+    self = bare(CurrencyWarsPrep, 'cw_shop_grey')
+    owned = self._bench_characters()
+    assert [self._copies(card, owned) for card in self._shop_cards()] == [0, 0, 0, 0, 0]
+
+
+def shop_card(tier, front=True):
+    from tasks.currency_wars.board import ShopCard
+    return ShopCard(index=0, tier=tier, front=front, back=not front)
+
+
+@pytest.mark.parametrize('card, copies, lowest, need, need_front, worth', [
+    # Copies first, even a grey one
+    (shop_card(1), 2, (3, 1), 0, False, True),
+    # Fill empty slots with anything
+    (shop_card(1), 0, None, 1, False, True),
+    # Upgrade only above the lowest deployed
+    (shop_card(3), 0, (2, 2), 0, False, True),
+    (shop_card(2), 0, (2, 1), 0, False, False),
+    (shop_card(2), 0, None, 0, False, False),
+])
+def test_shop_priority(card, copies, lowest, need, need_front, worth):
+    assert (CurrencyWarsPrep._shop_priority(card, copies, lowest, need, need_front) is not None) is worth
+
+
+def test_shop_priority_order():
+    copy = CurrencyWarsPrep._shop_priority(shop_card(1), 1, (3, 1), 1, True)
+    fill_front = CurrencyWarsPrep._shop_priority(shop_card(1, front=True), 0, (3, 1), 1, True)
+    fill_back = CurrencyWarsPrep._shop_priority(shop_card(5, front=False), 0, (3, 1), 1, True)
+    upgrade = CurrencyWarsPrep._shop_priority(shop_card(5), 0, (3, 1), 0, False)
+    assert copy < fill_front < fill_back < upgrade
+
+
+def test_deploy_target_replaces_lower_star():
+    # Same quality, the 1-star one is replaced, not the 2-star one
+    bench = [card('bench', 205, 3, True, False)]
+    board = [card('front', 488, 2), card('front', 590, 2)]
+    board[0].stars = 2
+    target = CurrencyWarsPrep._deploy_target(bench, board, {'front': [], 'back': []}, current=2, total=2)
+    assert target[1] == (590, 258)
+
+
+def test_deploy_target_quality_over_stars():
+    # A 1-star green replaces a 2-star grey, it will be starred up later
+    bench = [card('bench', 205, 2, True, False)]
+    board = [card('front', 488, 1)]
+    board[0].stars = 2
+    target = CurrencyWarsPrep._deploy_target(bench, board, {'front': [], 'back': []}, current=1, total=1)
+    assert target[1] == (488, 258)
+
+
+def test_deploy_target_higher_star_same_quality():
+    # A merged 2-star on bench replaces a 1-star of the same quality
+    bench = [card('bench', 205, 2, True, False)]
+    bench[0].stars = 2
+    board = [card('front', 488, 2)]
+    target = CurrencyWarsPrep._deploy_target(bench, board, {'front': [], 'back': []}, current=1, total=1)
+    assert target[1] == (488, 258)
+
+
+@pytest.mark.parametrize('name, count', [
+    # 4 columns of 4 plus a red gem in the 5th column
+    ('cw_equipments', 17),
+    ('cw_orbs', 0),
+    # Front row card at x 792 is not an equipment
+    ('cw_30', 0),
+    # Golden orbs at the left of the grid are not equipments
+    ('cw_orbs_benchfull', 0),
+])
+def test_equipments(name, count):
+    assert len(bare(CurrencyWarsPrep, name)._equipments()) == count
+
+
+def test_equipped():
+    self = bare(CurrencyWarsPrep, 'cw_82')
+    equipped = {(c.row, c.x): c.equipped for c in self._board_cards()}
+    assert equipped == {
+        ('front', 488): 0, ('front', 590): 2, ('front', 690): 1, ('front', 792): 2,
+        # Two icons touching each other under 540
+        ('back', 336): 1, ('back', 440): 1, ('back', 540): 2, ('back', 640): 1, ('back', 740): 0, ('back', 840): 0,
+    }
+
+
+def test_choice_panel_confirm_after_hint_gone(monkeypatch):
+    # "选择伙伴": after selecting, the hint is replaced by the selected one, only "确认选择" remains
+    def result(text, box):
+        return SimpleNamespace(ocr_text=text, box=box)
+
+    pages = iter([
+        [result('请选择伙伴', (1020, 396, 1148, 419)), result('列车同行', (300, 250, 380, 275)),
+         result('确认选择', (1045, 440, 1132, 466))],
+        [result('本已选择', (300, 400, 380, 420)), result('确认选择', (1045, 440, 1132, 466))],
+    ])
+    self = bare(CurrencyWarsChoice, 'cw_30')
+    self.device = FakeDevice('cw_30')
+    monkeypatch.setattr(self, '_choice_ocr', lambda: next(pages))
+    assert self.handle_choice_panel()
+    assert self.device.clicks == ['CHOICE_OPTION', 'CHOICE_CONFIRM']
+
+
+def test_choice_panel_already_selected(monkeypatch):
+    # Resumed on a panel with an option selected, confirm without clicking the option again
+    self = bare(CurrencyWarsChoice, 'cw_30')
+    self.device = FakeDevice('cw_30')
+    selected = [SimpleNamespace(ocr_text='确认选择', box=(1045, 440, 1132, 466))]
+    monkeypatch.setattr(self, '_choice_ocr', lambda: selected)
+    assert self.handle_choice_panel()
+    assert self.device.clicks == ['CHOICE_CONFIRM']
+
+
+def test_equip_leaves_unwanted_equipments():
+    # Screen never changes, every equipment is refused by everyone.
+    # Each one is tried on 3 characters at most, and it never trips the too-many-click check.
+    from tasks.currency_wars.prep import EQUIP_TRIES
+    self = bare(CurrencyWarsPrep, 'cw_equipments')
+    self.device = FakeDevice('cw_equipments')
+    self.prep_equip()
+    drags = self.device.drags
+    assert len(drags) == len(set(drags))
+    assert all(sum(item == p1 for p1, _ in drags) <= EQUIP_TRIES for item in self._equipments())
+    # Moves on to other equipments instead of giving up
+    assert len({p1 for p1, _ in drags}) > 1
+
+
+def test_deploy_counter_ink_at_right_edge():
+    # Only something at the right edge of the counter area, the text crop would be empty and crash OCR
+    self = bare(CurrencyWarsPrep, 'cw_30')
+    self.device.image = self.device.image.copy()
+    self.device.image[128:180, 530:730] = self.device.image[150, 400]
+    self.device.image[140:170, 715:722] = 255
+    assert self._deploy_counter() == (0, 0, 0)
+
+
+def test_buy_characters_skips_covered_shop(monkeypatch):
+    # Panel pops up after the counter is read, the shop button underneath still matches PREP_CHECK.
+    # Clicking it does nothing, never click it.
+    self = bare(CurrencyWarsPrep, 'cw_fortune')
+    self.device = FakeDevice('cw_fortune')
+    monkeypatch.setattr(self, '_wait_deploy_counter', lambda: (3, 5, 8))
+    self.prep_buy_characters()
+    assert self.device.clicks == []
+    # Panel pops up even later, after the check before opening the shop
+    ready = iter([True])
+    monkeypatch.setattr(self, 'is_prep_ready', lambda: next(ready, False))
+    self.prep_buy_characters()
+    assert self.device.clicks == []
+
+
+def test_deploy_target_keeps_unknown_quality():
+    # Quality unreadable on board, never replace it
+    bench = [card('bench', 205, 4, True, False)]
+    board = [card('front', 590, 0)]
+    assert CurrencyWarsPrep._deploy_target(bench, board, {'front': [], 'back': []}, current=1, total=1) is None
+
+
+def test_deploy_replaces_slot_once(monkeypatch):
+    # A misread pair would be swapped back and forth, each slot is replaced once at most
+    self = bare(CurrencyWarsPrep, 'cw_30')
+    self.device = FakeDevice('cw_30')
+    swap = (card('bench', 205, 4, True, False), (590, 258))
+    monkeypatch.setattr(self, 'is_prep_ready', lambda: True)
+    monkeypatch.setattr(self, '_deploy_counter', lambda: (4, 0, 4))
+    monkeypatch.setattr(self, '_deploy_target', lambda *args: swap)
+    monkeypatch.setattr(self, '_slot_patch', lambda point: np.random.randint(0, 255, (60, 50, 3)))
+    self.prep_deploy()
+    assert len(self.device.drags) == 1
+
+
+def test_deploy_target_prefers_unequipped():
+    # Two equal greys, the unequipped one is replaced, equipments of a benched character are idle
+    bench = [card('bench', 205, 4, True, False)]
+    board = [card('front', 488, 1), card('front', 590, 1), card('front', 690, 2)]
+    board[0].equipped = 3
+    target = CurrencyWarsPrep._deploy_target(bench, board, {'front': [], 'back': []}, current=3, total=3)
+    assert target[1] == (590, 258)
+    # Quality still comes first, an equipped grey is replaced before an unequipped green
+    board[1].equipped = 1
+    target = CurrencyWarsPrep._deploy_target(bench, board, {'front': [], 'back': []}, current=3, total=3)
+    assert target[1] == (590, 258)
+
+
+def test_sell_skips_covered_board(monkeypatch):
+    # Wish trial panel covers the board, copies on board can't be seen, never sell under it
+    self = bare(CurrencyWarsPrep, 'cw_fortune')
+    self.device = FakeDevice('cw_fortune')
+    bench = [card('bench', x, 4, True, False) for x in BENCH_X]
+    monkeypatch.setattr(self, '_bench_characters', lambda: bench)
+    monkeypatch.setattr(self, '_board_cards', lambda: [])
+    self.prep_sell_undeployable()
+    assert self.device.drags == []
+    # The same bench is sold once the panel is gone
+    monkeypatch.setattr(self, 'is_prep_ready', lambda: True)
+    self.prep_sell_undeployable()
+    assert len(self.device.drags) == 3
+
+
+def test_collect_orbs_skips_open_shop():
+    # Shop opens itself after some nodes, shop cards look like orbs
+    self = bare(CurrencyWarsPrep, 'cw_shop_grey')
+    self.device = FakeDevice('cw_shop_grey')
+    assert self._orb_rows()
+    self.prep_collect_orbs()
+    assert self.device.drags == []
+
+
+def test_collect_orbs_sells_full_bench():
+    # Orbs can't be opened with a full bench. Screen never changes, so selling doesn't free a slot,
+    # orbs are left instead of being swiped in vain.
+    from tasks.currency_wars.prep import SELL_AREA
+    self = bare(CurrencyWarsPrep, 'cw_orbs_benchfull')
+    self.device = FakeDevice('cw_orbs_benchfull')
+    assert self._orb_rows()
+    self.prep_collect_orbs()
+    assert self.device.drags
+    assert all(p2 == SELL_AREA for _, p2 in self.device.drags)
+
+
+@pytest.mark.parametrize('name, order', [
+    # Bench 413 and 517 are the same grey, not on board, more copies won't be bought
+    ('cw_dup_bench', [517, 413, 309, 205]),
+    # Bench 517 is the same as front slot 1, kept to merge
+    ('cw_dup_board', [309, 205, 517]),
+])
+def test_sell_order(name, order):
+    self = bare(CurrencyWarsPrep, name)
+    cards = self._sell_order(self._bench_characters(), self._board_cards())
+    assert [c.x for c in cards] == order

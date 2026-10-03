@@ -9,6 +9,8 @@ from tasks.base.ui import UI
 # They vary in layout, but all of them have a "请选择..." hint and option cards with text inside.
 CHOICE_PANEL = ClickButton((0, 0, 1280, 720), name='CHOICE_PANEL')
 CHOICE_HINT = '请选择'
+# Once an option is selected, some panels replace the hint with the selected one, but keep the confirm button
+CHOICE_CONFIRM_TEXT = '确认选择'
 # Option texts are inside this area, the left column of synergies and the board below are excluded
 CHOICE_OPTION_AREA = (130, 90, 1280, 420)
 # Texts that are not options: buttons, tags, toasts, board labels
@@ -31,8 +33,13 @@ class CurrencyWarsChoice(UI):
                 return result
         return None
 
+    @staticmethod
+    def _is_choice_panel(results) -> bool:
+        return any(CHOICE_HINT in result.ocr_text or result.ocr_text.startswith(CHOICE_CONFIRM_TEXT)
+                   for result in results)
+
     def is_choice_panel(self) -> bool:
-        return self._choice_hint(self._choice_ocr()) is not None
+        return self._is_choice_panel(self._choice_ocr())
 
     @staticmethod
     def _in_option_area(result) -> bool:
@@ -84,10 +91,10 @@ class CurrencyWarsChoice(UI):
             RequestHumanTakeover: If the panel mentions any cost
         """
         results = self._choice_ocr()
-        hint = self._choice_hint(results)
-        if hint is None:
+        if not self._is_choice_panel(results):
             return False
-        logger.info(f'Choice panel: {hint.ocr_text}')
+        hint = self._choice_hint(results)
+        logger.info(f'Choice panel: {hint.ocr_text if hint else "selected"}')
         # Board under the panel has "购买经验", only check the panel
         for result in results:
             if self._in_option_area(result) and any(word in result.ocr_text for word in CHOICE_DANGER):
@@ -95,17 +102,19 @@ class CurrencyWarsChoice(UI):
                 self.device.image_save()
                 raise RequestHumanTakeover
 
-        option = self._choice_option(results)
-        if option is None:
-            logger.warning('No option found on choice panel')
-            return False
-        self.device.click(option)
-        self.device.sleep(0.5)
-        self.device.screenshot()
-        results = self._choice_ocr()
-        if self._choice_hint(results) is None:
-            # Closed once selected, such as equipment boxes
-            return True
+        # Already selected, clicking the option again may deselect it
+        if hint is not None:
+            option = self._choice_option(results)
+            if option is None:
+                logger.warning('No option found on choice panel')
+                return False
+            self.device.click(option)
+            self.device.sleep(0.5)
+            self.device.screenshot()
+            results = self._choice_ocr()
+            if not self._is_choice_panel(results):
+                # Closed once selected, such as equipment boxes
+                return True
         confirm = self._choice_confirm(results)
         if confirm is not None:
             self.device.click(confirm)

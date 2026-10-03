@@ -1,134 +1,30 @@
-from dataclasses import dataclass
-
-import numpy as np
+import cv2
 
 from module.base.button import ClickButton
 from module.logger import logger
-from module.ocr.ocr import Digit, DigitCounter
-from tasks.currency_wars.choice import CurrencyWarsChoice
+from module.ocr.ocr import Digit
 from tasks.currency_wars.assets.assets_currency_wars_run import *
+from tasks.currency_wars.board import BENCH_X, BENCH_Y, Card, CurrencyWarsBoard, EQUIPPED_MAX
 
-# Board geometry at 1280x720, slots don't move between runs
-BENCH_X = [205 + 104 * i for i in range(9)]
-BENCH_Y = 595
-FRONT_X = [488, 590, 690, 792]
-FRONT_Y = 258
-# Back row has 6 slots, and expands to 7 when deploy limit reaches 10
-BACK_X_6 = [389, 489, 590, 690, 790, 890]
-BACK_X_7 = [336, 440, 540, 640, 740, 840, 940]
-BACK_Y = 448
-# Std of slot center, empty slot ~35, character card ~60+
-SLOT_OCCUPIED_STD = 47
 EXP_COST = 4
-# Orbs spawn on the right side of the board
+# Orbs spawn on the right side of the board, in various colors and sizes.
+# They are opened by slowly swiping over them, swipes start on the left to avoid dragging equipments.
+ORB_AREA = (850, 90, 1100, 330)
 ORB_SWEEP_X = (850, 1110)
-ORB_SWEEP_Y = [90, 140, 190, 240, 290]
 # Dragging a character onto the shop button sells it
 SELL_AREA = (1190, 610)
 # Bench has 9 slots, keep some room for orb rewards
 BENCH_SELL_THRESHOLD = 8
 BENCH_SELL_COUNT = 3
-# Shop has 5 character cards, opened by clicking PREP_CHECK ("商店") and closed by SHOP_OPEN ("收起")
-SHOP_CARDS_LEFT = [147 + 224 * i for i in range(5)]
+# Buy at most this many characters per prep for upgrades or copies, the rest of gold goes to exp for more slots
+SHOP_BUY_LIMIT = 3
+# Characters to try for an equipment before leaving it, some equipments only fit some characters
+EQUIP_TRIES = 3
+# Mean pixel change of a slot after dragging, below it the drag didn't take effect
+SLOT_CHANGED = 10
 
 
-@dataclass
-class BenchCharacter:
-    index: int
-    front: bool
-    back: bool
-
-    @property
-    def point(self):
-        return BENCH_X[self.index], BENCH_Y
-
-
-@dataclass
-class ShopCard:
-    index: int
-    cost: int
-    front: bool
-    back: bool
-
-    @property
-    def button(self):
-        x = SHOP_CARDS_LEFT[self.index] + 100
-        return ClickButton((x - 30, 100, x + 30, 160), name=f'SHOP_CARD_{self.index}')
-
-
-class CurrencyWarsPrep(CurrencyWarsChoice):
-    def _slot_occupied(self, x, y) -> bool:
-        patch = self.device.image[y - 30:y + 30, x - 25:x + 25]
-        return patch.std() > SLOT_OCCUPIED_STD
-
-    def _bench_cards(self) -> list[BenchCharacter]:
-        """
-        Characters and equipment boxes on bench.
-        Position marker on card top-right: upper square lit = can stand front, lower square lit = can stand back.
-        Equipment box has no position marker, so it's front=False and back=False.
-        """
-        image = self.device.image
-        cards = []
-        for index, x in enumerate(BENCH_X):
-            card = image[548:645, x - 42:x + 42]
-            if card.std() < 30:
-                continue
-            top = np.mean(image[553:560, x + 29:x + 36])
-            bottom = np.mean(image[562:569, x + 29:x + 36])
-            cards.append(BenchCharacter(index=index, front=top > 200, back=bottom > 200))
-        return cards
-
-    def _bench_characters(self) -> list[BenchCharacter]:
-        return [card for card in self._bench_cards() if card.front or card.back]
-
-    def _bench_boxes(self) -> list[int]:
-        return [card.index for card in self._bench_cards() if not card.front and not card.back]
-
-    def _shop_cards(self) -> list[ShopCard]:
-        """
-        Cards remaining in shop, bought ones become empty slots.
-        Position marker is the same as bench cards.
-        """
-        image = self.device.image
-        cards = []
-        for index, left in enumerate(SHOP_CARDS_LEFT):
-            if image[40:250, left + 10:left + 190].std() < 30:
-                continue
-            # Cost digit only, coin icon on its left is read as "9"
-            button = ClickButton((left + 172, 222, left + 202, 254), name=f'SHOP_COST_{index}')
-            cost = Digit(button).ocr_single_line(image)
-            top = np.mean(image[47:54, left + 176:left + 182])
-            bottom = np.mean(image[62:69, left + 176:left + 182])
-            cards.append(ShopCard(index=index, cost=cost, front=top > 200, back=bottom > 200))
-        return cards
-
-    def _empty_slots(self, row: str, deploy_total: int) -> list[tuple[int, int]]:
-        if row == 'front':
-            xs, y = FRONT_X, FRONT_Y
-        else:
-            xs, y = (BACK_X_7 if deploy_total >= 10 else BACK_X_6), BACK_Y
-        return [(x, y) for x in xs if not self._slot_occupied(x, y)]
-
-    def _deploy_counter(self) -> tuple[int, int, int]:
-        """
-        Deploy counter "current/total" is centered with a person icon on its left,
-        so the icon moves with digit count and a fixed OCR area either cuts digits or reads the icon as "1".
-        Find the icon as the first column run that differs from background, and OCR on its right.
-        """
-        x1, y1, x2, y2 = OCR_DEPLOY.area
-        crop = self.device.image[y1 + 4:y2 - 4, x1:x2].astype(int)
-        background = np.median(crop.reshape(-1, 3), axis=0)
-        ink = np.abs(crop - background).sum(axis=2).max(axis=0) > 150
-        columns = np.flatnonzero(ink)
-        if not columns.size:
-            return 0, 0, 0
-        # End of the icon, the first gap after the first ink column
-        gaps = np.flatnonzero(~ink[columns[0]:])
-        if not gaps.size:
-            return 0, 0, 0
-        text_x1 = x1 + columns[0] + gaps[0] + 3
-        return DigitCounter(ClickButton((text_x1, y1, x2, y2), name='OCR_DEPLOY')).ocr_single_line(self.device.image)
-
+class CurrencyWarsPrep(CurrencyWarsBoard):
     def prep_buy_exp(self):
         """
         Pages:
@@ -163,9 +59,54 @@ class CurrencyWarsPrep(CurrencyWarsChoice):
         # Exp is bought by repeated clicks, don't let them count as stuck
         self.device.click_record_clear()
 
+    @staticmethod
+    def _deploy_target(bench: list[Card], board: list[Card], empty: dict[str, list], current: int, total: int):
+        """
+        Returns:
+            tuple[Card, tuple[int, int]] | None: Bench character and where to drop it.
+                Highest value first, into an empty slot if any,
+                otherwise onto a lower value character, which swaps them.
+                Among equal ones, the unequipped is replaced, equipments of a benched character are idle.
+        """
+        for card in sorted(bench, key=lambda c: (-c.tier, -c.stars, c.x)):
+            rows = [row for row in ('front', 'back') if getattr(card, row)]
+            if current < total:
+                for row in rows:
+                    if empty[row]:
+                        return card, empty[row][0]
+            # Unknown quality is not replaced, a misread one would be swapped back and forth
+            lower = [other for other in board if other.row in rows and other.tier and other.value < card.value]
+            if lower:
+                return card, min(lower, key=lambda c: (c.value, c.equipped, c.x)).point
+        return None
+
+    def _wait_deploy_counter(self) -> tuple[int, int, int]:
+        """
+        Deploy counter is covered by toasts and level up animation for a while.
+
+        Returns:
+            current, remain, total. total is 0 if unreadable.
+        """
+        for _ in range(5):
+            self.device.screenshot()
+            counter = self._deploy_counter()
+            if counter[2]:
+                return counter
+            # Covered by a reward or panel, let the run loop handle it
+            if not self.is_prep_ready():
+                return 0, 0, 0
+            self.device.sleep(1)
+        logger.warning('Deploy counter unreadable')
+        return 0, 0, 0
+
+    def _slot_patch(self, point):
+        x, y = point
+        return self.device.image[y - 30:y + 30, x - 25:x + 25].astype(int)
+
     def prep_deploy(self):
         """
-        Drag characters from bench to empty slots until deploy limit.
+        Deploy bench characters into empty slots, then replace lower quality ones on board.
+        Characters already on board are skipped, the game refuses duplicates with a toast covering the counter.
 
         Pages:
             in: PREP_CHECK
@@ -173,7 +114,7 @@ class CurrencyWarsPrep(CurrencyWarsChoice):
         """
         logger.hr('Prep deploy', level=2)
         skipped = set()
-        last = None
+        replaced = set()
         unreadable = 0
         for _ in range(20):
             self.device.screenshot()
@@ -182,7 +123,7 @@ class CurrencyWarsPrep(CurrencyWarsChoice):
                 break
             current, _, total = self._deploy_counter()
             if total == 0:
-                # Counter covered by level up animation or a toast (deploying a duplicate character)
+                # Counter covered by level up animation or a toast
                 unreadable += 1
                 if unreadable >= 5:
                     logger.warning('Deploy counter unreadable, stop deploying')
@@ -190,77 +131,121 @@ class CurrencyWarsPrep(CurrencyWarsChoice):
                 self.device.sleep(1)
                 continue
             unreadable = 0
-            if last is not None:
-                last_index, last_count = last
-                if current <= last_count:
-                    logger.info(f'Bench {last_index} not deployed, probably a duplicate')
-                    skipped.add(last_index)
-            if current >= total:
-                logger.info('Deploy full')
-                break
-            candidates = [c for c in self._bench_characters() if c.index not in skipped]
-            if not candidates:
-                logger.info('No character to deploy')
-                break
-            character = candidates[0]
-            target = None
-            if character.front:
-                slots = self._empty_slots('front', total)
-                if slots:
-                    target = slots[0]
-            if target is None and character.back:
-                slots = self._empty_slots('back', total)
-                if slots:
-                    target = slots[0]
+            board = self._board_cards()
+            bench = [card for card in self._deployable(self._bench_characters(), board) if card.x not in skipped]
+            empty = {row: self._empty_slots(row) for row in ('front', 'back')}
+            target = self._deploy_target(bench, board, empty, current, total)
             if target is None:
-                logger.info(f'No empty slot for bench {character}')
-                skipped.add(character.index)
-                last = None
-                continue
-            logger.info(f'Deploy bench {character} -> {target}')
-            self.device.drag(character.point, target, point_random=(0, 0, 0, 0),
-                             name=f'DEPLOY_{character.index}')
-            last = (character.index, current)
+                logger.info(f'Deploy done, {current}/{total}')
+                break
+            card, point = target
+            # Each slot is replaced once at most, a misread card would be swapped back and forth
+            if point in replaced:
+                logger.info(f'Slot {point} already replaced, deploy done')
+                break
+            if current >= total:
+                replaced.add(point)
+            logger.info(f'Deploy {card} -> {point}')
+            before = self._slot_patch(point)
+            self.device.drag(card.point, point, point_random=(0, 0, 0, 0), name=f'DEPLOY_{card.index}')
             self.device.sleep(0.8)
+            self.device.screenshot()
+            if abs(self._slot_patch(point) - before).mean() < SLOT_CHANGED:
+                logger.info(f'Bench {card.index} not deployed')
+                skipped.add(card.x)
         self.device.click_record_clear()
 
-    def prep_buy_characters(self):
+    @staticmethod
+    def _shop_priority(card, copies: int, lowest, need: int, need_front: bool):
         """
-        Buy characters from shop if there aren't enough to fill deploy slots.
+        Returns:
+            tuple | None: Sort key of a shop card, smaller is better. None if not worth buying.
+                Copies of owned characters first, 3 copies merge into a higher star.
+                Then characters to fill empty slots, then higher quality than the lowest deployed.
+        """
+        if copies:
+            return 0, -copies, -card.tier
+        if need > 0:
+            return 1, need_front and not card.front, -card.tier
+        if lowest is not None and (card.tier, 1) > lowest:
+            return 2, -card.tier
+        return None
+
+    def prep_buy_characters(self, fill_only=False):
+        """
+        Buy copies of owned characters, characters to fill empty slots, and higher quality ones.
         Without this, the board can't recover after losing all characters,
         some investment strategies turn all characters into gold.
+
+        Args:
+            fill_only: Only buy characters to fill empty slots
 
         Pages:
             in: PREP_CHECK
             out: PREP_CHECK
         """
-        self.device.screenshot()
-        current, _, total = self._deploy_counter()
-        characters = self._bench_characters()
-        need = total - current - len(characters)
-        if total == 0 or need <= 0:
+        current, _, total = self._wait_deploy_counter()
+        # Shop button still matches PREP_CHECK under panels, but clicking it does nothing
+        if total == 0 or not self.is_prep_ready():
+            return
+        board = self._board_cards()
+        bench = self._bench_characters()
+        deployable = self._deployable(bench, board)
+        need = total - current - len(deployable)
+        # The lowest value among the characters that will be deployed, worth replacing
+        deployed = sorted(card.value for card in board + deployable)[-total:]
+        lowest = deployed[0] if len(deployed) >= total else None
+        if fill_only and need <= 0:
             return
         logger.hr('Prep buy characters', level=2)
         # FIGHT is blocked without any front character
-        need_front = len(self._empty_slots('front', total)) == len(FRONT_X) and not any(c.front for c in characters)
+        need_front = not any(card.row == 'front' for card in board) and not any(c.front for c in deployable)
+        owned = board + bench
+        extra = 0 if fill_only else SHOP_BUY_LIMIT
 
-        bought = 0
+        opened = False
         for _ in self.loop(timeout=30):
             if self.appear(PREP_CHECK, interval=2):
+                # Panels may pop up late, such as Black Swan's fortune teller
+                if not self.is_prep_ready():
+                    logger.info('Shop covered by a panel, stop buying')
+                    break
                 self.device.click(PREP_CHECK)
                 continue
             if not self.appear(SHOP_OPEN):
                 continue
-            gold = Digit(OCR_GOLD).ocr_single_line(self.device.image)
-            cards = [card for card in self._shop_cards() if 0 < card.cost <= gold]
-            if bought >= need or not cards or len(self._bench_cards()) >= len(BENCH_X):
+            if not opened:
+                # Cards slide in after the button switches to "收起"
+                opened = True
+                self.device.sleep(0.5)
+                continue
+            if len(self._bench_cards()) >= len(BENCH_X):
+                logger.info('Bench full, stop buying')
                 break
-            # Front characters first if needed, then the leftmost
-            card = sorted(cards, key=lambda c: (need_front and not c.front, c.index))[0]
-            logger.info(f'Buy {card}')
+            gold = Digit(OCR_GOLD).ocr_single_line(self.device.image)
+            candidates = []
+            for card in self._shop_cards():
+                if card.cost > gold:
+                    continue
+                # Only star up deployed characters, copies of bench ones would be sold soon
+                copies = 0 if fill_only or not self._copies(card, board) else self._copies(card, owned)
+                priority = self._shop_priority(card, copies, lowest, need, need_front)
+                if priority is not None:
+                    candidates.append((priority, card))
+            if need <= 0 and extra <= 0:
+                break
+            if not candidates:
+                break
+            priority, card = min(candidates, key=lambda c: (c[0], c[1].index))
+            if priority[0] > 1 and extra <= 0:
+                break
+            logger.info(f'Buy {card}, priority {priority}')
             self.device.click(card.button)
-            bought += 1
-            need_front = need_front and not card.front
+            if priority[0] == 1:
+                need -= 1
+                need_front = need_front and not card.front
+            else:
+                extra -= 1
             self.device.sleep(0.8)
 
         for _ in self.loop(timeout=10):
@@ -270,23 +255,57 @@ class CurrencyWarsPrep(CurrencyWarsChoice):
                 continue
         self.device.click_record_clear()
 
+    def _orb_rows(self) -> list[int]:
+        """
+        Returns:
+            Y of orbs on the board, orbs on the same row are merged
+        """
+        x1, y1, x2, y2 = ORB_AREA
+        gray = cv2.cvtColor(self.device.image[y1:y2, x1:x2], cv2.COLOR_RGB2GRAY)
+        gray = cv2.GaussianBlur(gray, (5, 5), 1.5)
+        circles = cv2.HoughCircles(gray, cv2.HOUGH_GRADIENT, dp=1, minDist=15,
+                                   param1=80, param2=22, minRadius=11, maxRadius=26)
+        if circles is None:
+            return []
+        rows = []
+        for y in sorted(int(y1 + y) for _, y, _ in circles[0]):
+            if not rows or y - rows[-1] > 12:
+                rows.append(y)
+        return rows
+
     def prep_collect_orbs(self):
         """
         Orbs on the right of the board give gold, characters, equipments.
         They are collected by slowly swiping over them, clicking or fast swipes don't work.
+        Orbs can't be opened with a full bench, and their rewards may fill it, so sell and swipe again.
 
         Pages:
             in: PREP_CHECK
             out: PREP_CHECK, or INVEST_STRATEGY_CHECK if an orb gives an investment strategy
         """
         logger.hr('Prep collect orbs', level=2)
-        for y in ORB_SWEEP_Y:
-            self.device.swipe((ORB_SWEEP_X[0], y), (ORB_SWEEP_X[1], y), duration=(0.8, 0.8),
-                              name='ORB_SWEEP', distance_check=False)
-            self.device.sleep(0.3)
-        self.device.click_record_clear()
-        # Rewards fly to bench and investment strategy panel pops up after ~2s
-        self.device.sleep(2.5)
+        for _ in range(3):
+            self.device.screenshot()
+            # Shop opens itself after some nodes, its cards would be swiped
+            if not self.is_prep_ready():
+                return
+            rows = self._orb_rows()
+            logger.attr('OrbRows', rows)
+            if not rows:
+                return
+            if len(self._bench_cards()) >= len(BENCH_X):
+                self.prep_sell_undeployable()
+                self.device.screenshot()
+                if len(self._bench_cards()) >= len(BENCH_X):
+                    logger.info('Bench full, leave orbs')
+                    return
+            for y in rows:
+                self.device.swipe((ORB_SWEEP_X[0], y), (ORB_SWEEP_X[1], y), duration=(0.8, 0.8),
+                                  name='ORB_SWEEP', distance_check=False)
+                self.device.sleep(0.3)
+            self.device.click_record_clear()
+            # Rewards fly to bench and investment strategy panel pops up after ~2s
+            self.device.sleep(2.5)
 
     def prep_open_boxes(self):
         """
@@ -320,6 +339,53 @@ class CurrencyWarsPrep(CurrencyWarsChoice):
             self.device.sleep(1)
         self.device.click_record_clear()
 
+    def prep_equip(self):
+        """
+        Drag every equipment onto board characters, highest value first, 3 at most for each.
+
+        Pages:
+            in: PREP_CHECK
+            out: PREP_CHECK
+        """
+        self.device.screenshot()
+        if not self._equipments():
+            return
+        logger.hr('Prep equip', level=2)
+        # Some equipments only fit some characters. Try each one on a few characters, then leave it.
+        # Items don't move while they stay, so they are tracked by position.
+        tried = {}
+        for _ in range(20):
+            if not self.is_prep_ready():
+                break
+            cards = [card for card in sorted(self._board_cards(), key=lambda c: (c.value, -c.x), reverse=True)
+                     if card.equipped < EQUIPPED_MAX]
+            equipments = self._equipments()
+            target = None
+            for item in equipments:
+                if len(tried.get(item, [])) >= EQUIP_TRIES:
+                    continue
+                for card in cards:
+                    if card.point not in tried.get(item, []):
+                        target = item, card
+                        break
+                if target:
+                    break
+            if target is None:
+                break
+            item, card = target
+            logger.info(f'Equip {item} -> {card}')
+            self.device.drag(item, card.point, point_random=(0, 0, 0, 0), name='EQUIP')
+            self.device.sleep(1)
+            self.device.screenshot()
+            if len(self._equipments()) >= len(equipments):
+                logger.info(f'Equipment not taken by {card}')
+                tried.setdefault(item, []).append(card.point)
+            else:
+                tried.clear()
+            # Each drag is verified above, they are not blind repeated clicks
+            self.device.click_record_clear()
+        self.device.click_record_clear()
+
     def handle_character_detail(self) -> bool:
         """
         Character detail panel pops up after clicking a character, it has a sell button.
@@ -334,6 +400,18 @@ class CurrencyWarsPrep(CurrencyWarsChoice):
             return True
         return False
 
+    def _sell_order(self, characters: list[Card], board: list[Card]) -> list[Card]:
+        """
+        Lowest value first, copies of board characters last as they merge into a higher star.
+        Copies of bench characters are sold, more of them won't be bought.
+        """
+        def key(card):
+            copy = any(self._same_character(card, other) for other in board)
+            # Selling from the right, so positions of the remaining ones won't shift
+            return copy, card.value, -card.x
+
+        return sorted(characters, key=key)
+
     def prep_sell_undeployable(self):
         """
         Sell bench characters that can't be deployed, so bench won't block orbs and supplies.
@@ -344,12 +422,15 @@ class CurrencyWarsPrep(CurrencyWarsChoice):
             out: PREP_CHECK
         """
         self.device.screenshot()
+        # Board is hidden under panels, copies on it can't be checked
+        if not self.is_prep_ready():
+            return
         characters = self._bench_characters()
         if len(characters) < BENCH_SELL_THRESHOLD:
             return
         logger.hr('Prep sell', level=2)
-        # Sell from the rightmost, so indexes of the remaining ones won't shift
-        for character in sorted(characters, key=lambda c: c.index, reverse=True)[:BENCH_SELL_COUNT]:
+        sell = self._sell_order(characters, self._board_cards())[:BENCH_SELL_COUNT]
+        for character in sorted(sell, key=lambda c: c.x, reverse=True):
             logger.info(f'Sell bench {character}')
             self.device.drag(character.point, SELL_AREA, point_random=(0, 0, 0, 0),
                              name=f'SELL_{character.index}')
@@ -379,6 +460,8 @@ class CurrencyWarsPrep(CurrencyWarsChoice):
             in: PREP_CHECK
             out: PREP_CHECK
         """
+        # Better characters on bench take their slots first, instead of being sold to make room for orbs
+        self.prep_deploy()
         self.prep_collect_orbs()
         self.device.screenshot()
         if not self.is_prep_ready():
@@ -386,8 +469,12 @@ class CurrencyWarsPrep(CurrencyWarsChoice):
             return False
         self.prep_open_boxes()
         self.prep_buy_characters()
-        self.prep_buy_exp()
         self.prep_deploy()
+        self.prep_buy_exp()
+        # Level up adds a slot, fill it
+        self.prep_buy_characters(fill_only=True)
+        self.prep_deploy()
+        self.prep_equip()
         self.prep_sell_undeployable()
         # Selling or deploying may also trigger panels
         self.device.screenshot()
