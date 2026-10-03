@@ -217,6 +217,15 @@ def test_ocr(ocr_class, button, name, expected):
 
 
 @pytest.mark.parametrize('name, expected', [
+    ('cw_maxed', True),
+    ('cw_05', False),
+    ('cw_96', False),
+])
+def test_promotion_max(name, expected):
+    assert bare(CurrencyWars, name).is_promotion_max() is expected
+
+
+@pytest.mark.parametrize('name, expected', [
     ('cw_12', (0, 3, 3)),
     ('cw_30', (3, 1, 4)),
     # Fixed areas failed on these: icon read as "1" in "0/4", "8" cut into "3", leading "1" of "10" cut

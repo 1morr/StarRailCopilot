@@ -93,6 +93,15 @@ class CurrencyWarsEntry(CurrencyWarsRun, DungeonUI):
                 self.interval_reset(MODE_BACK, interval=2)
                 continue
 
+    def is_promotion_max(self) -> bool:
+        """
+        Weekly extra points are replaced by "当前晋升等级已满级" once promotion level is maxed
+
+        Pages:
+            in: mode select
+        """
+        return '满级' in Ocr(OCR_WEEKLY_EXTRA).ocr_single_line(self.device.image)
+
     def get_status(self) -> CurrencyWarsStatus:
         """
         Pages:
@@ -113,8 +122,7 @@ class CurrencyWarsEntry(CurrencyWarsRun, DungeonUI):
             logger.warning('Lobby numbers not stable')
         (score, _, score_total), level = previous
         self.lobby_to_mode()
-        # Weekly extra points are replaced by "当前晋升等级已满级" once promotion level is maxed
-        promotion_max = '满级' in Ocr(OCR_WEEKLY_EXTRA).ocr_single_line(self.device.image)
+        promotion_max = self.is_promotion_max()
         if promotion_max:
             extra, extra_total = 0, 0
         else:
