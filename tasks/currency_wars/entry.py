@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from module.base.button import ClickButton
 from module.exception import RequestHumanTakeover
 from module.logger import logger
-from module.ocr.ocr import Digit, DigitCounter
+from module.ocr.ocr import Digit, DigitCounter, Ocr
 from tasks.base.page import page_currency_wars
 from tasks.currency_wars.assets.assets_currency_wars_entry import *
 from tasks.currency_wars.run import CurrencyWarsRun
@@ -21,11 +21,13 @@ class CurrencyWarsStatus:
     weekly_extra: int
     weekly_extra_total: int
     promotion_level: int
+    # Weekly extra points are no longer given
+    promotion_max: bool = False
 
     @property
     def weekly_full(self) -> bool:
-        return (self.score_total > 0 and self.score >= self.score_total
-                and self.weekly_extra_total > 0 and self.weekly_extra >= self.weekly_extra_total)
+        extra_full = self.weekly_extra_total > 0 and self.weekly_extra >= self.weekly_extra_total
+        return self.score_total > 0 and self.score >= self.score_total and (extra_full or self.promotion_max)
 
 
 class CurrencyWarsEntry(CurrencyWarsRun, DungeonUI):
@@ -111,11 +113,16 @@ class CurrencyWarsEntry(CurrencyWarsRun, DungeonUI):
             logger.warning('Lobby numbers not stable')
         (score, _, score_total), level = previous
         self.lobby_to_mode()
-        extra, _, extra_total = DigitCounter(OCR_WEEKLY_EXTRA).ocr_single_line(self.device.image)
+        # Weekly extra points are replaced by "当前晋升等级已满级" once promotion level is maxed
+        promotion_max = '满级' in Ocr(OCR_WEEKLY_EXTRA).ocr_single_line(self.device.image)
+        if promotion_max:
+            extra, extra_total = 0, 0
+        else:
+            extra, _, extra_total = DigitCounter(OCR_WEEKLY_EXTRA).ocr_single_line(self.device.image)
         status = CurrencyWarsStatus(
             score=score, score_total=score_total,
             weekly_extra=extra, weekly_extra_total=extra_total,
-            promotion_level=level,
+            promotion_level=level, promotion_max=promotion_max,
         )
         logger.attr('CurrencyWarsStatus', status)
         return status

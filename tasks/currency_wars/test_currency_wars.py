@@ -244,6 +244,11 @@ def status(score=18000, extra=3000, level=100):
                               promotion_level=level)
 
 
+def status_maxed(score=18000):
+    # Weekly extra counter shows "当前晋升等级已满级" instead of numbers
+    return CurrencyWarsStatus(score=score, score_total=18000, weekly_extra=0, weekly_extra_total=0,
+                              promotion_level=170, promotion_max=True)
+
 
 def task(max_runs=3, target_level=0):
     self = CurrencyWars.__new__(CurrencyWars)
@@ -265,6 +270,9 @@ def task(max_runs=3, target_level=0):
     ({'target_level': 0}, status(level=999), 0, False),
     # OCR failure gives total=0, must not be treated as full
     ({}, CurrencyWarsStatus(0, 0, 0, 0, 0), 5, False),
+    # Promotion level maxed, no more promotion points to farm once score is full
+    ({'max_runs': 9999}, status_maxed(), 0, True),
+    ({'max_runs': 9999}, status_maxed(score=8000), 5, False),
 ])
 def test_should_stop(kwargs, st, runs, expected):
     assert task(**kwargs).should_stop(st, runs) is expected

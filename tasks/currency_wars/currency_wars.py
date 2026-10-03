@@ -8,11 +8,15 @@ class CurrencyWars(CurrencyWarsEntry):
     def should_stop(self, status: CurrencyWarsStatus, runs: int) -> bool:
         """
         Weekly capped rewards (score and extra promotion points) always come first.
-        After that, keep farming promotion points until run count or target level is reached.
+        After that, keep farming promotion points until run count or target level is reached,
+        or promotion level is maxed.
         """
         if not status.weekly_full:
             logger.info('Weekly rewards not full, continue')
             return False
+        if status.promotion_max:
+            logger.info('Promotion level maxed')
+            return True
         if runs >= self.config.CurrencyWars_MaxRunsPerTask:
             logger.info(f'Reached max runs per task: {runs}')
             return True
