@@ -204,6 +204,7 @@ class CurrencyWarsPrep(CurrencyWarsBoard):
         extra = 0 if fill_only else SHOP_BUY_LIMIT
 
         opened = False
+        missing = 0
         for _ in self.loop(timeout=30):
             if self.appear(PREP_CHECK, interval=2):
                 # Panels may pop up late, such as Black Swan's fortune teller
@@ -213,6 +214,12 @@ class CurrencyWarsPrep(CurrencyWarsBoard):
                 self.device.click(PREP_CHECK)
                 continue
             if not self.appear(SHOP_OPEN):
+                # Neither shop nor prep page, an investment strategy from orbs pops up late
+                missing = 0 if self.appear(PREP_CHECK) else missing + 1
+                if missing >= 5:
+                    logger.info('Left prep page, stop buying')
+                    self.device.click_record_clear()
+                    return
                 continue
             if not opened:
                 # Cards slide in after the button switches to "收起"

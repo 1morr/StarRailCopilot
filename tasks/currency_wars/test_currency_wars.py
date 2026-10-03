@@ -724,3 +724,16 @@ def test_sell_order(name, order):
     self = bare(CurrencyWarsPrep, name)
     cards = self._sell_order(self._bench_characters(), self._board_cards())
     assert [c.x for c in cards] == order
+
+
+def test_buy_characters_leaves_strategy_panel(monkeypatch):
+    # Investment strategy pops up after the shop button is clicked, neither shop nor prep page shows up
+    import time
+    self = bare(CurrencyWarsPrep, 'cw_28')
+    self.device = FakeDevice('cw_28')
+    monkeypatch.setattr(self, '_wait_deploy_counter', lambda: (3, 5, 8))
+    monkeypatch.setattr(self, 'is_prep_ready', lambda: True)
+    start = time.time()
+    self.prep_buy_characters()
+    assert time.time() - start < 5
+    assert self.device.clicks == []
